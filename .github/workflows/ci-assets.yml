@@ -4,11 +4,13 @@ on:
   push:
     branches:
     - main
+    - dev
     paths:
     - 'src/assets/**'
   pull_request:
     branches:
     - main
+    - dev
     paths:
     - 'src/assets/**'
     - 'images/**'
@@ -18,24 +20,37 @@ jobs:
   build:
     name: CI
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+
     steps:
     - name: Check out code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Set up QEMU
-      id: qemu
-      uses: docker/setup-qemu-action@v2
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        image: tonistiigi/binfmt:latest
-        platforms: all
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: us-east-1
 
-    - name: Set up Docker Buildx
-      id: buildx
-      uses: docker/setup-buildx-action@v2
+    - name: Login to ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Expose GitHub Runtime
-      uses: crazy-max/ghaction-github-runtime@v2
-        
-    - name: Build container image
+    - name: Build and Push Docker image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: retail-store-assets
+        IMAGE_TAG: ${{ github.sha }}
+        BRANCH: ${{ github.ref_name }}
       run: |
-        scripts/build-image.sh -s assets -t ci --actions-cache
+        docker build -f src/assets/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG src/assets/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+        if [ "${{ github.event_name }}" == "push" ]; then
+          SAFE_BRANCH=$(echo $BRANCH | tr '/' '-')
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+        fi
