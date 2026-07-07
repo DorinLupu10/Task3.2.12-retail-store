@@ -54,3 +54,4 @@ jobs:
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
         fi
+        
