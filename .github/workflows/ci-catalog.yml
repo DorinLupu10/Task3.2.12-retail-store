@@ -29,20 +29,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '^1.18.1'
-
-      - name: Run CI script
-        run: |
-          src/catalog/scripts/ci.sh
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -60,9 +46,13 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          scripts/build-image.sh -s catalog -t $IMAGE_TAG -r $ECR_REGISTRY --push
+          docker build -f images/go/Dockerfile \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            src/catalog/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
           if [ "${{ github.event_name }}" == "push" ]; then
             SAFE_BRANCH=$(echo $BRANCH | tr '/' '-')
-            scripts/build-image.sh -s catalog -t $SAFE_BRANCH -r $ECR_REGISTRY --push
+            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
           fi
