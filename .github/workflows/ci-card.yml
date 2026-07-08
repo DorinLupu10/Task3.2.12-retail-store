@@ -1,0 +1,59 @@
+name: Cart CI
+
+on:
+  push:
+    branches:
+    - main
+    - dev
+    paths:
+    - 'src/cart/**'
+  pull_request:
+    branches:
+    - main
+    - dev
+    paths:
+    - 'src/cart/**'
+    - 'images/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: CI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: retail-store-cart
+          IMAGE_TAG: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          docker build -f images/java17/Dockerfile \
+            --build-arg JAR_PATH=target/carts-0.0.1-SNAPSHOT.jar \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            src/cart/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          if [ "${{ github.event_name }}" == "push" ]; then
+            SAFE_BRANCH=$(echo $BRANCH | tr '/' '-')
+            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH
+          fi
